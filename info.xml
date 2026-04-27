@@ -2,20 +2,17 @@
 <extension key="nl.onvergetelijk.terms" type="module">
   <file>terms</file>
   <name>nl.onvergetelijk.terms</name>
-  <description>FIXME</description>
+  <description>Extensie tbv algemene voorwaarden</description>
   <license>AGPL-3.0</license>
-  <authors>
-    <author>
-      <name>magnolia61</name>
-      <email>richard.van.oosterhout@gmail.com</email>
-      <role>Maintainer</role>
-    </author>
-  </authors>
+  <maintainer>
+    <author>Richard van Oosterhout</author>
+    <email>webteam@onvergetelijk.nl</email>
+  </maintainer>
   <urls>
-    <url desc="Main Extension Page">https://FIXME</url>
-    <url desc="Documentation">https://FIXME</url>
-    <url desc="Support">https://FIXME</url>
-    <url desc="Licensing">https://www.gnu.org/licenses/agpl-3.0.html</url>
+    <url desc="Main Extension Page">https://www.onvergetelijk.nl</url>
+    <url desc="Documentation">https://www.onvergetelijk.nl</url>
+    <url desc="Support">https://www.onvergetelijk.nl</url>
+    <url desc="Licensing">http://www.gnu.org/licenses/agpl-3.0.html</url>
   </urls>
   <releaseDate>2026-04-21</releaseDate>
   <version>1.0.0</version>
@@ -23,7 +20,7 @@
   <compatibility>
     <ver>6.13</ver>
   </compatibility>
-  <comments>This is a new, undeveloped module</comments>
+  <comments>This module is an extension for Stichting Onvergetelijke Zomerkampen</comments>
   <classloader>
     <psr0 prefix="CRM_" path="."/>
     <psr4 prefix="Civi\" path="Civi"/>
