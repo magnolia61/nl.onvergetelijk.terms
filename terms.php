@@ -17,7 +17,7 @@ require_once 'terms.helpers.php';
 use CRM_Terms_ExtensionUtil as E;
 
 // Centrale debug-level constante
-define('TERMS_EXTDEBUG', 4);
+define('TERMS_EXTDEBUG', 0);
 
 /**
  * =========================================================================================
@@ -39,6 +39,33 @@ function terms_civicrm_customPre(string $op, int $groupID, int $entityID, array 
 
     $entityTable        = $params[0]['entity_table'] ?? '';
     wachthond(TERMS_EXTDEBUG, 3, "entityTable",             $entityTable);
+
+    // ==============================================================================
+    // NIEUW: SNELLE EXIT VOOR NIET-KAMPEN (zoals Trainingsdagen)
+    // ==============================================================================
+    if ($entityTable === 'civicrm_participant') {
+        
+        $eventtypes       = get_event_types();
+        $toegestane_types = array_merge($eventtypes['deel'], $eventtypes['leid']);
+        
+        try {
+            $part_check = civicrm_api4('Participant', 'get', [
+                'checkPermissions'  => FALSE,
+                'select'            => ['event_id.event_type_id'],
+                'where'             => [['id', '=', $entityID]],
+            ])->first();
+            
+            if (!in_array($part_check['event_id.event_type_id'] ?? NULL, $toegestane_types)) {
+                wachthond(TERMS_EXTDEBUG, 3, "TERMS SNELLE EXIT: Geen whitelist event_type", "[PID: $entityID]");
+                return; // Stop direct! Geen sync naar contact, geen domino-effect.
+            }
+        } catch (\Exception $e) {
+            // Failsafe
+        }
+    }
+
+    $terms_custompre_start = microtime(TRUE);
+    watchdog('civicrm_timing', base_microtimer("START terms_custompre [GID: $groupID / EID: $entityID]"), NULL, WATCHDOG_DEBUG);
 
     wachthond(TERMS_EXTDEBUG, 2, "########################################################################");
     wachthond(TERMS_EXTDEBUG, 1, "### TERMS [PRE] 1.0 HET SCHILD & DE VERDELER",                  "[START]");
@@ -113,6 +140,9 @@ function terms_civicrm_customPre(string $op, int $groupID, int $entityID, array 
     wachthond(TERMS_EXTDEBUG, 2, "########################################################################");
     wachthond(TERMS_EXTDEBUG, 1, "### TERMS [PRE] 3.0 EINDE CUSTOMPRE",                       "[$entityID]");
     wachthond(TERMS_EXTDEBUG, 2, "########################################################################");
+
+    $total_terms_custompre_duur = number_format(microtime(TRUE) - $terms_custompre_start, 3);
+    watchdog('civicrm_timing', base_microtimer("EINDE terms_custompre"), NULL, WATCHDOG_DEBUG);
 }
 
 /**
@@ -128,6 +158,9 @@ function terms_civicrm_configure(?int $entityID = null, array $params = [], stri
     static $processing_terms = [];
     if ($entityID !== null && isset($processing_terms[$entityID])) return $params;
     if ($entityID !== null) $processing_terms[$entityID] = true;
+
+    $terms_configure_start = microtime(TRUE);
+    watchdog('civicrm_timing', base_microtimer("START terms_configure [EID: $entityID / TYPE: $entityType]"), NULL, WATCHDOG_DEBUG);
 
     $now = date('YmdHis');
     $res = [];
@@ -163,6 +196,9 @@ function terms_civicrm_configure(?int $entityID = null, array $params = [], stri
     wachthond(TERMS_EXTDEBUG, 2, "########################################################################");
 
     if ($entityID !== null) unset($processing_terms[$entityID]);
+
+    $total_terms_configure_duur = number_format(microtime(TRUE) - $terms_configure_start, 3);
+    watchdog('civicrm_timing', base_microtimer("EINDE terms_configure"), NULL, WATCHDOG_DEBUG);
 
     return $res;
 }
