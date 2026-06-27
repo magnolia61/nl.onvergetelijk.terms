@@ -202,4 +202,95 @@ class TermsHelpersTest extends \PHPUnit\Framework\TestCase implements EndToEndIn
     $this->assertArrayHasKey('TERMS.akkoord_medisch_datum', $result, 'Datum voor medisch moet gevuld zijn.');
     $this->assertCount(2, $result, 'Precies twee datums moeten gegenereerd zijn.');
   }
+
+  // ########################################################################
+  // ### REGRESSIE: FOTO-VOORKEUR (0=Geen,1=Beperkt,2=Alles) ≠ CHECKBOX
+  // ########################################################################
+
+  /**
+   * Voorkeur 'Alles' (waarde 2) zonder bestaande datum → datum gevuld.
+   *
+   * REGRESSIE (de reden van de split). Vóór de fix zaten de foto-voorkeurvelden
+   * in dezelfde map als de checkboxes en werd alleen op == '1' gestempeld.
+   * Waarde 2 ('Alles') viel daardoor buiten de boot en kreeg GEEN datum, terwijl
+   * dat juist de sterkste toestemming is. De voorkeur-map stempelt nu bij elke
+   * waarde > 0. Als deze test faalt, is de checkbox/voorkeur-split teruggedraaid.
+   */
+  public function testVoorkeurAllesVultDatum() {
+    if (!function_exists('terms_generate_date_stamps')) {
+      $this->markTestSkipped('terms_generate_date_stamps() niet beschikbaar.');
+    }
+    $now    = date('YmdHis');
+    $result = terms_generate_date_stamps(['TERMS.akkoord_fotos_16plus' => '2'], $now);
+
+    $this->assertArrayHasKey('TERMS.akkoord_fotos_16plus_datum', $result,
+      "Voorkeur 'Alles' (2) moet een datum stempelen — onder de oude ==1-logica gebeurde dat NIET.");
+    $this->assertEquals($now, $result['TERMS.akkoord_fotos_16plus_datum'],
+      'De gestempelde datum moet gelijk zijn aan $now.');
+  }
+
+  /**
+   * Voorkeur 'Beperkt' (waarde 1) → datum gevuld (ondergrens van > 0).
+   * De voorkeur akkoord_foto_voorkeur stempelt het ouders-datumveld.
+   */
+  public function testVoorkeurBeperktVultOudersDatum() {
+    if (!function_exists('terms_generate_date_stamps')) {
+      $this->markTestSkipped('terms_generate_date_stamps() niet beschikbaar.');
+    }
+    $now    = date('YmdHis');
+    $result = terms_generate_date_stamps(['TERMS.akkoord_foto_voorkeur' => '1'], $now);
+
+    $this->assertArrayHasKey('TERMS.akkoord_fotos_ouders_datum', $result,
+      "Voorkeur 'Beperkt' (1) moet het ouders-datumveld stempelen.");
+    $this->assertEquals($now, $result['TERMS.akkoord_fotos_ouders_datum']);
+  }
+
+  /**
+   * Voorkeur 'Geen' (waarde 0) met bestaande datum → datum gewist ('null').
+   */
+  public function testVoorkeurGeenWistBestaandeDatum() {
+    if (!function_exists('terms_generate_date_stamps')) {
+      $this->markTestSkipped('terms_generate_date_stamps() niet beschikbaar.');
+    }
+    $now    = date('YmdHis');
+    $params = [
+      'TERMS.akkoord_fotos_16plus'       => '0',
+      'TERMS.akkoord_fotos_16plus_datum' => '20240101000000',
+    ];
+    $result = terms_generate_date_stamps($params, $now);
+
+    $this->assertArrayHasKey('TERMS.akkoord_fotos_16plus_datum', $result);
+    $this->assertEquals('null', $result['TERMS.akkoord_fotos_16plus_datum'],
+      "Voorkeur 'Geen' (0) moet een bestaande datum wissen.");
+  }
+
+  /**
+   * Voorkeur 'Geen' (0) zónder bestaande datum → niets te wissen, geen sleutel.
+   */
+  public function testVoorkeurGeenZonderDatumDoetNiets() {
+    if (!function_exists('terms_generate_date_stamps')) {
+      $this->markTestSkipped('terms_generate_date_stamps() niet beschikbaar.');
+    }
+    $result = terms_generate_date_stamps(['TERMS.akkoord_fotos_16plus' => '0'], date('YmdHis'));
+    $this->assertArrayNotHasKey('TERMS.akkoord_fotos_16plus_datum', $result,
+      "Geen voorkeur én geen bestaande datum → niets te doen.");
+  }
+
+  // ########################################################################
+  // ### REGRESSIE: VERVALLEN VELD 2314 (akkoord_fotos_ouders ja/nee)
+  // ########################################################################
+
+  /**
+   * Het vervallen ja/nee-veld 2314 (akkoord_fotos_ouders) mag niet meer in de
+   * field map staan; de ouder-toestemming loopt nu via de voorkeur (2317) en
+   * de 16+ voorkeur (2311). Als deze sleutel terugkeert, schrijft de hook weer
+   * naar een afgeschaft veld.
+   */
+  public function testVervallenOudersCheckboxNietMeerInMap() {
+    $map = terms_get_field_map();
+    $this->assertArrayNotHasKey('akkoord_fotos_ouders_2314', $map,
+      'Vervallen veld akkoord_fotos_ouders_2314 mag niet meer in de field map staan.');
+    $this->assertNotContains('TERMS.akkoord_fotos_ouders', array_values($map),
+      'Alias TERMS.akkoord_fotos_ouders (2314) is afgeschaft en mag niet meer voorkomen.');
+  }
 }
