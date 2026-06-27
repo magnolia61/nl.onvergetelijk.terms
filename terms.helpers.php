@@ -43,9 +43,9 @@ function terms_get_field_map(): array {
 		'akkoord_conduct_check_1796'			=> 'TERMS.akkoord_conduct_check',
 
 		// Foto Snapshots (PART_TERMS - Groep 178)
+		// 2311 = voorkeur deelnemer 16+ (0=Geen, 1=Beperkt, 2=Alles); 2314 vervallen (was ja/nee ouders)
 		'akkoord_fotos_16plus_2311'				=> 'TERMS.akkoord_fotos_16plus',
 		'akkoord_fotos_16plus_datum_2313'		=> 'TERMS.akkoord_fotos_16plus_datum',
-		'akkoord_fotos_ouders_2314'				=> 'TERMS.akkoord_fotos_ouders',
 		'akkoord_fotos_ouders_datum_2315'		=> 'TERMS.akkoord_fotos_ouders_datum',
 		'akkoord_fotos_ouders_verlener_2316'	=> 'TERMS.akkoord_fotos_ouders_verlener',
 		'akkoord_fotos_voorkeur_2317'			=> 'TERMS.akkoord_foto_voorkeur',
@@ -71,20 +71,25 @@ function terms_get_field_map(): array {
  * Genereert datumstempels voor aangevinkte velden.
  */
 function terms_generate_date_stamps(array $params, string $now): array {
-	$trigger_map = [
+	// Checkbox-velden: datum zetten bij == '1', wissen bij leeg/0
+	$checkbox_map = [
 		'TERMS.akkoord_regels_check'	=> 'TERMS.akkoord_regels_datum',
 		'TERMS.akkoord_terms_check'		=> 'TERMS.akkoord_terms_datum',
 		'TERMS.akkoord_privacy_check'	=> 'TERMS.akkoord_privacy_datum',
 		'TERMS.akkoord_medisch_check'	=> 'TERMS.akkoord_medisch_datum',
 		'TERMS.akkoord_conduct_check'	=> 'TERMS.akkoord_conduct_datum',
-		'TERMS.akkoord_fotos_16plus'	=> 'TERMS.akkoord_fotos_16plus_datum',
-		'TERMS.akkoord_fotos_ouders'	=> 'TERMS.akkoord_fotos_ouders_datum',
 		'PRIVACY.toestemming_16plus'	=> 'PRIVACY.datum_toestemming',
 		'PRIVACY.toestemming_ouders'	=> 'PRIVACY.datum_toestemming',
 	];
 
+	// Voorkeur-velden (0=Geen, 1=Beperkt, 2=Alles): datum zetten bij > 0, wissen bij 0/leeg
+	$voorkeur_map = [
+		'TERMS.akkoord_fotos_16plus'	=> 'TERMS.akkoord_fotos_16plus_datum',
+		'TERMS.akkoord_foto_voorkeur'	=> 'TERMS.akkoord_fotos_ouders_datum',
+	];
+
 	$res = [];
-	foreach ($trigger_map as $check_key => $date_key) {
+	foreach ($checkbox_map as $check_key => $date_key) {
 		$val = $params[$check_key] ?? null;
 		if ($val == '1' && empty($params[$date_key])) {
 			$res[$date_key] = $now;
@@ -92,6 +97,16 @@ function terms_generate_date_stamps(array $params, string $now): array {
 		} elseif (($val === '0' || empty($val)) && !empty($params[$date_key])) {
 			$res[$date_key] = 'null';
 			wachthond(TERMS_EXTDEBUG, 3, "Vinkje UIT voor $check_key, datum gewist");
+		}
+	}
+	foreach ($voorkeur_map as $check_key => $date_key) {
+		$val = $params[$check_key] ?? null;
+		if ($val > 0 && empty($params[$date_key])) {
+			$res[$date_key] = $now;
+			wachthond(TERMS_EXTDEBUG, 3, "Voorkeur ingesteld voor $check_key (waarde $val), datum gezet");
+		} elseif (($val === '0' || $val === null) && !empty($params[$date_key])) {
+			$res[$date_key] = 'null';
+			wachthond(TERMS_EXTDEBUG, 3, "Voorkeur Geen voor $check_key, datum gewist");
 		}
 	}
 	return $res;
@@ -118,15 +133,18 @@ function terms_sync_participant_to_contact(int $entityID, array $params, array $
 	if (!$contact_id) return;
 
 	$sync_payload	= [];
-	$voorkeur		= $params['TERMS.akkoord_foto_voorkeur']    ?? 'Niet opgegeven';
-	$toelichting	= $params['TERMS.akkoord_foto_toelichting'] ?? '';
+	$voorkeur_ouders	= $params['TERMS.akkoord_foto_voorkeur']    ?? null;
+	$voorkeur_16plus	= $params['TERMS.akkoord_fotos_16plus']     ?? null;
+	$toelichting		= $params['TERMS.akkoord_foto_toelichting'] ?? '';
 
-	if (($params['TERMS.akkoord_fotos_16plus'] ?? null) == '1') {
+	// 2311: deelnemer 16+ voorkeur (0=Geen, 1=Beperkt, 2=Alles) → PRIVACY.toestemming_16plus
+	if ($voorkeur_16plus > 0) {
 		$sync_payload['PRIVACY.toestemming_16plus'] = "1";
 		$sync_payload['PRIVACY.datum_toestemming']  = $res['TERMS.akkoord_fotos_16plus_datum'] ?? $now;
 	}
 
-	if (($params['TERMS.akkoord_fotos_ouders'] ?? null) == '1') {
+	// 2317: ouders voorkeur (0=Geen, 1=Beperkt, 2=Alles) → PRIVACY.toestemming_ouders
+	if ($voorkeur_ouders > 0) {
 		$sync_payload['PRIVACY.toestemming_ouders'] = "1";
 		$sync_payload['PRIVACY.datum_toestemming']  = $res['TERMS.akkoord_fotos_ouders_datum'] ?? $now;
 	}
@@ -136,7 +154,11 @@ function terms_sync_participant_to_contact(int $entityID, array $params, array $
 		return;
 	}
 
-	$opmerking = "Voorkeur ($now): " . $voorkeur;
+	$voorkeur_labels = ['0' => 'Geen', '1' => 'Beperkt', '2' => 'Alles'];
+	$opmerking = "Voorkeur ouders ($now): " . ($voorkeur_labels[$voorkeur_ouders] ?? 'Niet opgegeven');
+	if ($voorkeur_16plus !== null) {
+		$opmerking .= " | Voorkeur 16+ ($now): " . ($voorkeur_labels[$voorkeur_16plus] ?? 'Niet opgegeven');
+	}
 	if (!empty($toelichting)) {
 		$opmerking .= " | Toelichting: " . $toelichting;
 	}
